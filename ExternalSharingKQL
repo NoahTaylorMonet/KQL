@@ -1,0 +1,35 @@
+let InternalDomains = dynamic(["contoso.com", "contoso.onmicrosoft.com"]); // <-- replace with domain
+CloudAppEvents
+| where Timestamp > ago(7d)
+| where Application in ("Microsoft OneDrive for Business", "Microsoft SharePoint Online") //This is looking at all sharing platforms 
+// List of actions that are ways access can be granted
+| where ActionType in (
+    "SharingSet",
+    "SharingInvitationCreated",
+    "AnonymousLinkCreated",
+    "SecureLinkCreated",
+    "AddedToSecureLink",
+    "CompanyLinkCreated"
+  )
+  //Grabbing the target information to figure out if guest or external or unknown
+| extend Targets = RawEventData.TargetUserOrGroupName
+| extend TargetType = tostring(RawEventData.TargetUserOrGroupType)
+| extend TargetUser = tolower(tostring(Targets))
+| extend TargetDomain = tostring(split(TargetUser, "@")[1])
+//When user is guest or external it will show the event
+| where TargetType in ("Guest", "External")
+    or (isnotempty(TargetDomain) and TargetDomain !in (InternalDomains))
+    or ActionType == "AnonymousLinkCreated"
+//project who shared it, with who, what was shared, and how. Raw event data shows full details.
+| project
+    Timestamp,
+    AccountDisplayName,
+    AccountUpn = AccountObjectId,
+    ActionType,
+    TargetUser,
+    TargetType,
+    TargetDomain,
+    ObjectName,
+    IPAddress,
+    RawEventData
+| order by Timestamp desc
